@@ -7,13 +7,11 @@ import zipfile
 import datetime
 
 
-ee.Initialize()
-
-def accumluate_images(image, images):
-    images.append(image)
-    return images
-
 if __name__ == '__main__':
+    # Initialize earth engine
+    ee.Initialize()
+
+    # Define your desired area of landsat data here
     polygon = ee.Geometry.Polygon(
 	        [[[-79.75, 42.25],
 	          [-79.75, 42],
@@ -25,24 +23,36 @@ if __name__ == '__main__':
 	          [-75.8, 39.7],
 	          [-80.5, 39.7],
 	          [-80.5, 42.25]]])
-
-    collection = ee.ImageCollection("USDA/NAIP/DOQQ").filter(ee.Filter.date('2017-01-01', '2018-12-31'))
-    collection = collection.filterBounds(polygon)
-    trueColor = collection.select(['R', 'G', 'B'])
-    trueColor = trueColor.mosaic()
-    NIR = collection.select(['N'])
-    NIR = NIR.mean()
+    lat_bound1 = -80.5
+    lat_bound2 = -74.7
+    lon_bound1 = 39.7
+    lon_bound2 = 42.3
     step_len = 0.05
-    for lat in np.arange(-74.7, -80.5, -1 * step_len):
-      for lon in np.arange(39.7, 42.3, step_len):
-    # for lat in np.arange(-76, -76.2, -1 * step_len):
-    #   for lon in np.arange(41, 41.2, step_len):
-        rect = ee.Geometry.Polygon([[[lat, lon], [lat, lon+step_len], [lat-step_len, lon+step_len], [lat-step_len, lon]]])
-        # collection2 = collection.filterBounds(rect)
 
+    # This is a sample for NAIP/DOQQ data, feel free to modify to accomodate your own need
+    collection_name = "USDA/NAIP/DOQQ"
+    date_filter = ee.Filter.date('2017-01-01', '2018-12-31') # Note that not all Javascript API works for Python so be careful with ee.Filter , ImageCollection's filter methods may be good alternatives
+
+    # Take data
+    collection = ee.ImageCollection(collection_name).filter(date_filter)
+    collection = collection.filterBounds(polygon)
+    # Select specific channel and mosaic to large images
+    trueColor = collection.select(['R', 'G', 'B'])
+    NIR = collection.select(['N'])
+    trueColor = trueColor.mosaic()
+    NIR = NIR.mosaic()
+
+    # State / City size images are usually too large for exporting, so the images are cropped into tiles and downloaded. Usually 3000x3000 is a good size.
+    for lat in np.arange(lat_bound1, lat_bound2, step_len):
+      for lon in np.arange(lon_bound1, lon_bound2, step_len):
+
+        # Crop image and get download url
+        rect = ee.Geometry.Polygon([[[lat, lon], [lat, lon+step_len], [lat-step_len, lon+step_len], [lat-step_len, lon]]])
         path = trueColor.getDownloadUrl({'scale':1, 'region':rect.getInfo()['coordinates']})
         path2 = NIR.getDownloadUrl({'scale': 1, 'region':rect.getInfo()['coordinates']})
         print('{}, Downloading: {}, {}'.format(datetime.datetime.now(), lat, lon))
+        
+        # Fetch data
         img_data = requests.get(path).content
         with open('zipfile/' + str(lat) + '_' + str(lon) + '.zip', 'wb') as handler:
           print('Done. Processing files...')
@@ -59,6 +69,8 @@ if __name__ == '__main__':
           zip_ref = zipfile.ZipFile('zipfile/' + str(lat) + '_' + str(lon) + '_N.zip', 'r')
           zip_ref.extractall('./zipfile')
           zip_ref.close()
+        
+        # Process unzipped single channel data, RGB data are put together
         files = os.listdir('./zipfile')
         is_image_RGB = None
         for file in files:
@@ -80,48 +92,9 @@ if __name__ == '__main__':
             elif file_n[-5] == 'N':
               ihandle = Image.fromarray(image[:H, :W].astype(np.uint8))
               ihandle.save(os.path.join('./', str(lat) + '_' + str(lon) + '_N.png'))
+
+          # Downloaded files are treated as temp files and removed to save disk
           os.remove(file_n)
+
         ihandle = Image.fromarray(image_RGB.astype(np.uint8))
         ihandle.save(os.path.join('./', str(lat) + '_' + str(lon) + '.png'))
-    # collection = collection.filterBounds(polygon)
-    # collection = collection.mean()
-    # trueColor = collection.select(['R', 'G', 'B', 'N'])
-    # collectionList = trueColor.toList(trueColor.size())
-    # collectionSize = collectionList.size().getInfo()
-    # print(collectionSize)
-    # for i in xrange(collectionSize):
-    #     I_i = ee.Image(collectionList.get(i))
-    #     id = I_i.getInfo()['id'].split('/')[-1]
-    #     # print(I_i.getInfo()['id'].split('/')[-1])
-    #     path = I_i.getDownloadUrl({'scale':1})
-    #     print('Downloading: '+ id)
-    #     img_data = requests.get(path).content
-    #     with open('zipfile/' + id+'.zip', 'wb') as handler:
-    #         print('Done. Processing files...')
-    #         handler.write(img_data)
-    #         handler.close()
-    #         zip_ref = zipfile.ZipFile('zipfile/' + id+'.zip', 'r')
-    #         zip_ref.extractall('./zipfile')
-    #         zip_ref.close()
-    #         files = os.listdir('./zipfile')
-    #         is_image_RGB = None
-    #         for file in files:
-    #           file_n = os.path.join('./zipfile', file)
-    #           if file_n[-4:] == '.tif':
-    #             image = np.asarray(Image.open(file_n))
-    #             H, W = image.shape[0], image.shape[1]
-    #             if not is_image_RGB:
-    #               image_RGB = np.zeros([H, W, 3])
-    #               is_image_RGB = True
-    #             if file_n[-5] == 'R':
-    #               image_RGB[..., 0] = image
-    #             elif file_n[-5] == 'G':
-    #               image_RGB[..., 1] = image
-    #             elif file_n[-5] == 'B':
-    #               image_RGB[..., 2] = image
-    #             elif file_n[-5] == 'N':
-    #               ihandle = Image.fromarray(image.astype(np.uint8))
-    #               ihandle.save(os.path.join('./', file[:-4]+'.png'))
-    #           os.remove(file_n)
-    #         ihandle = Image.fromarray(image_RGB.astype(np.uint8))
-    #         ihandle.save(os.path.join('./', id+'.png'))
