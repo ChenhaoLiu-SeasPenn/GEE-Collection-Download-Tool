@@ -42,6 +42,10 @@ if __name__ == '__main__':
     trueColor = trueColor.mosaic()
     NIR = NIR.mosaic()
 
+    # Make directory for temp files
+    if not os.path.exists('./zipfile'):
+      os.mkdir('zipfile')
+
     # State / City size images are usually too large for exporting, so the images are cropped into tiles and downloaded. Usually 3000x3000 is a good size.
     for lat in np.arange(lat_bound1, lat_bound2, step_len):
       for lon in np.arange(lon_bound1, lon_bound2, step_len):
